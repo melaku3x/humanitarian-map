@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Global Humanitarian Needs Tracker</title>
+
+  <!-- Leaflet: an open-source JavaScript library for interactive maps -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+
+    #app { display: flex; flex-direction: column; height: 100vh; }
+
+    header {
+      background: #1a2332;
+      color: #fff;
+      padding: 14px 22px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      z-index: 1000;
+    }
+    header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.3px; }
+    header p { font-size: 12px; color: #9aa5b6; margin-top: 2px; }
+
+    #main { display: flex; flex: 1; min-height: 0; }
+    #map { flex: 1; background: #aad3df; }
+
+    #sidebar {
+      width: 320px;
+      background: #f7f8fa;
+      border-left: 1px solid #e1e4e8;
+      padding: 18px;
+      overflow-y: auto;
+      font-size: 13px;
+    }
+    #sidebar h2 { font-size: 14px; margin-bottom: 10px; color: #1a2332; }
+    #sidebar h3 { font-size: 12px; text-transform: uppercase; color: #6b7280; margin: 16px 0 8px; letter-spacing: 0.5px; }
+    #sidebar p { color: #374151; line-height: 1.5; margin-bottom: 8px; }
+
+    .info-box {
+      background: #fff;
+      border: 1px solid #e1e4e8;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .info-box .label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.3px; }
+    .info-box .value { font-size: 18px; font-weight: 600; color: #1a2332; margin-top: 2px; }
+    .info-box .sub { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+
+    .legend {
+      background: rgba(255,255,255,0.95);
+      padding: 10px 12px;
+      border-radius: 6px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .legend h4 { font-size: 12px; margin-bottom: 6px; color: #1a2332; }
+    .legend .swatch { display: inline-block; width: 14px; height: 14px; margin-right: 6px; vertical-align: middle; border: 1px solid rgba(0,0,0,0.1); }
+
+    .leaflet-popup-content { font-size: 12px; line-height: 1.5; }
+    .leaflet-popup-content b { color: #1a2332; }
+    .popup-pin { color: #b91c1c; font-weight: 600; }
+
+    .controls { margin-top: 8px; }
+    .controls label { display: block; margin-bottom: 6px; cursor: pointer; }
+    .controls input { margin-right: 6px; }
+
+    footer { font-size: 11px; color: #9ca3af; margin-top: 16px; line-height: 1.5; }
+    footer a { color: #6b7280; }
+  </style>
+</head>
+<body>
+  <div id="app">
+
+    <header>
+      <h1>Global Humanitarian Needs Tracker</h1>
+      <p>Country risk shaded by INFORM Risk Index &middot; Crisis markers show active emergencies and people in need (PIN)</p>
+    </header>
+
+    <div id="main">
+      <div id="map"></div>
+
+      <aside id="sidebar">
+        <h2>About this map</h2>
+        <p>
+          This map shows where humanitarian aid is most needed worldwide.
+          Countries are shaded by their <b>INFORM Risk score</b> (a composite
+          index of hazard exposure, vulnerability, and lack of coping capacity).
+          Red circles mark <b>active emergencies</b> &mdash; click them for
+          details on people in need and funding gaps.
+        </p>
+
+        <h3>Global totals (2025)</h3>
+        <div class="info-box">
+          <div class="label">People in need worldwide</div>
+          <div class="value">305M</div>
+          <div class="sub">across 72 countries</div>
+        </div>
+        <div class="info-box">
+          <div class="label">UN appeal funding gap</div>
+          <div class="value">~64%</div>
+          <div class="sub">$49.6B requested, ~$18B funded</div>
+        </div>
+        <div class="info-box">
+          <div class="label">Forcibly displaced</div>
+          <div class="value">122M</div>
+          <div class="sub">refugees + internally displaced</div>
+        </div>
+
+        <h3>Layers</h3>
+        <div class="controls">
+          <label><input type="checkbox" id="toggleChoropleth" checked /> Country risk (shaded)</label>
+          <label><input type="checkbox" id="toggleMarkers" checked /> Active crisis markers</label>
+        </div>
+
+        <footer>
+          Data sources: INFORM Risk Index 2024 (EU JRC), UN OCHA Global
+          Humanitarian Overview 2025, UNHCR. Values are illustrative and
+          approximate &mdash; for educational use.
+        </footer>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+  /* =========================================================================
+     STEP 1 - INITIALIZE THE MAP
+     We create a Leaflet map centered roughly on Africa / Middle East (where
+     most humanitarian crises are concentrated) at zoom level 2 (whole world).
+  ========================================================================= */
+  const map = L.map('map', {
+    center: [15, 25],
+    zoom: 2,
+    minZoom: 2,
+    worldCopyJump: true
+  });
+
+  // A neutral grey basemap so our color-coding stands out.
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+
+
+  /* =========================================================================
+     STEP 2 - THE DATA: INFORM RISK INDEX (approximate 2024 values)
+     INFORM Risk is a 0-10 score combining 3 dimensions:
+       - Hazards & exposure (conflict, natural disasters)
+       - Vulnerability (poverty, inequality, displaced people)
+       - Lack of coping capacity (weak institutions, poor infrastructure)
+     Keys are ISO 3166-1 alpha-3 country codes.
+  ========================================================================= */
+  const riskData = {
+    'SOM': 8.8, 'SSD': 8.4, 'YEM': 8.4, 'AFG': 8.2, 'COD': 8.1,
+    'SDN': 8.0, 'CAF': 7.9, 'SYR': 7.7, 'TCD': 7.7, 'NGA': 7.5,
+    'MLI': 7.3, 'BFA': 7.2, 'ETH': 7.2, 'MMR': 7.1, 'NER': 7.0,
+    'HTI': 6.9, 'IRQ': 6.7, 'MOZ': 6.6, 'PAK': 6.5, 'CMR': 6.5,
+    'UKR': 6.4, 'VEN': 6.2, 'BDI': 6.0, 'LBY': 5.9, 'COL': 5.8,
+    'HND': 5.7, 'KEN': 5.5, 'GTM': 5.5, 'PSE': 8.0, 'LBN': 5.4,
+    'AGO': 5.4, 'PHL': 5.3, 'EGY': 5.1, 'IRN': 5.1, 'TZA': 5.0,
+    'UGA': 5.5, 'ZWE': 5.4, 'BGD': 5.3, 'IND': 5.2, 'NPL': 4.6,
+    'RWA': 4.5, 'GHA': 4.0, 'ZMB': 4.3, 'LKA': 4.7, 'MDG': 4.9,
+    'TUR': 4.5, 'JOR': 4.2, 'MEX': 4.4, 'BRA': 4.2, 'IDN': 4.6,
+    'KHM': 4.6, 'PRY': 3.8, 'MAR': 3.3, 'TUN': 3.4, 'DZA': 3.9,
+    'ZAF': 4.1, 'SEN': 4.0, 'CIV': 4.7, 'GIN': 5.0, 'LBR': 4.9,
+    'SLE': 4.7, 'TGO': 4.3, 'BEN': 4.0, 'MWI': 4.6, 'NAM': 3.0,
+    'BWA': 2.8, 'CHN': 4.2, 'RUS': 4.5, 'USA': 3.5, 'CAN': 1.7,
+    'AUS': 1.8, 'GBR': 2.0, 'FRA': 2.5, 'DEU': 1.9, 'ITA': 2.5,
+    'ESP': 2.4, 'JPN': 2.7, 'KOR': 2.0, 'PRK': 5.6, 'SAU': 3.7,
+    'ARE': 1.8, 'QAT': 1.6, 'OMN': 2.0, 'KWT': 2.2, 'ISR': 4.3,
+    'AZE': 3.7, 'ARM': 3.6, 'GEO': 3.5, 'KAZ': 3.0, 'UZB': 3.8,
+    'TKM': 3.7, 'KGZ': 3.9, 'TJK': 4.6, 'MNG': 3.5, 'VNM': 4.0,
+    'THA': 4.3, 'LAO': 4.0, 'MYS': 3.0, 'SGP': 1.0, 'NZL': 1.5,
+    'CHL': 2.5, 'ARG': 3.0, 'URY': 2.0, 'PER': 4.3, 'BOL': 4.1,
+    'ECU': 4.1, 'CRI': 2.5, 'PAN': 2.7, 'CUB': 3.6, 'DOM': 3.7,
+    'NIC': 4.4, 'SLV': 4.2, 'JAM': 3.2, 'ESH': 5.5, 'SWZ': 3.3,
+    'LSO': 4.0, 'GNB': 4.6, 'GMB': 4.0, 'MRT': 5.1, 'COG': 5.4,
+    'GAB': 3.4, 'GNQ': 3.5, 'ERI': 6.5, 'DJI': 4.7, 'COM': 4.0,
+    'BHR': 1.9, 'CYP': 2.4, 'IRL': 1.5, 'NLD': 1.6, 'BEL': 2.4,
+    'CHE': 1.2, 'AUT': 1.7, 'SWE': 1.7, 'NOR': 1.4, 'FIN': 1.5,
+    'DNK': 1.5, 'POL': 2.5, 'ROU': 3.0, 'BGR': 2.8, 'HUN': 2.6,
+    'CZE': 2.0, 'SVK': 2.2, 'GRC': 3.2, 'PRT': 2.3, 'HRV': 2.6,
+    'SRB': 3.4, 'BIH': 3.8, 'MKD': 3.3, 'ALB': 3.4, 'MDA': 3.7,
+    'BLR': 3.5, 'EST': 2.0, 'LVA': 2.4, 'LTU': 2.4, 'ISL': 1.0,
+    'PNG': 5.4, 'FJI': 3.6, 'SLB': 4.2, 'VUT': 4.0, 'TLS': 4.4,
+    'BTN': 3.3, 'MDV': 2.6, 'BRN': 1.8
+  };
+
+  /* =========================================================================
+     STEP 3 - COLOR SCALE
+     We map risk score (0-10) to a color from yellow (low) to dark red (very
+     high). This kind of map is called a CHOROPLETH.
+  ========================================================================= */
+  function getColor(score) {
+    if (score === undefined) return '#e5e7eb';   // no data: light grey
+    return score > 8 ? '#67000d'
+         : score > 7 ? '#a50f15'
+         : score > 6 ? '#cb181d'
+         : score > 5 ? '#ef3b2c'
+         : score > 4 ? '#fb6a4a'
+         : score > 3 ? '#fcae91'
+         : score > 2 ? '#fee5d9'
+                     : '#fff5f0';
+  }
+
+  function styleCountry(feature) {
+    // The GeoJSON we load uses ISO_A3 in `feature.id`
+    const score = riskData[feature.id];
+    return {
+      fillColor: getColor(score),
+      weight: 0.5,
+      opacity: 1,
+      color: '#888',
+      fillOpacity: score === undefined ? 0.3 : 0.75
+    };
+  }
+
+
+  /* =========================================================================
+     STEP 4 - LOAD WORLD COUNTRY BOUNDARIES (GeoJSON)
+     We fetch a well-known public GeoJSON of country polygons and draw them.
+     On hover, we highlight; on click, we show details.
+  ========================================================================= */
+  let countriesLayer;
+
+  function onEachCountry(feature, layer) {
+    const score = riskData[feature.id];
+    const name = feature.properties.name;
+    const label = score !== undefined
+      ? `<b>${name}</b><br/>INFORM Risk: <b>${score.toFixed(1)} / 10</b>`
+      : `<b>${name}</b><br/>No risk data`;
+    layer.bindTooltip(label, { sticky: true });
+
+    layer.on({
+      mouseover: (e) => {
+        e.target.setStyle({ weight: 2, color: '#222', fillOpacity: 0.9 });
+        e.target.bringToFront();
+      },
+      mouseout: (e) => countriesLayer.resetStyle(e.target)
+    });
+  }
+
+  fetch('https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json')
+    .then(r => r.json())
+    .then(geojson => {
+      countriesLayer = L.geoJSON(geojson, {
+        style: styleCountry,
+        onEachFeature: onEachCountry
+      }).addTo(map);
+    })
+    .catch(err => {
+      console.error('Could not load country boundaries:', err);
+    });
+
+
+  /* =========================================================================
+     STEP 5 - ACTIVE CRISIS POINTS
+     A list of currently active humanitarian emergencies. Each is plotted as
+     a red circle marker; size scales with people-in-need (PIN). Click for a
+     popup with details.
+  ========================================================================= */
+  const crises = [
+    { name: 'Sudan civil war',            lat: 15.5,  lon: 32.5,  pin: 24.8, fund: 36, drivers: 'Armed conflict, displacement, famine risk' },
+    { name: 'DR Congo (eastern)',         lat: -1.7,  lon: 29.2,  pin: 25.4, fund: 29, drivers: 'Conflict (M23, ADF), mass displacement' },
+    { name: 'Afghanistan',                lat: 34.5,  lon: 69.2,  pin: 23.7, fund: 40, drivers: 'Economic collapse, drought, rights crisis' },
+    { name: 'Ethiopia',                   lat: 9.0,   lon: 38.7,  pin: 21.4, fund: 37, drivers: 'Conflict (Tigray/Amhara), drought' },
+    { name: 'Myanmar',                    lat: 16.8,  lon: 96.15, pin: 19.9, fund: 26, drivers: 'Conflict since 2021 coup, displacement' },
+    { name: 'Yemen',                      lat: 15.4,  lon: 44.2,  pin: 18.2, fund: 31, drivers: 'Protracted conflict, food insecurity' },
+    { name: 'Syria',                      lat: 33.5,  lon: 36.3,  pin: 16.7, fund: 30, drivers: 'Protracted conflict, 2023 quake recovery' },
+    { name: 'Ukraine',                    lat: 50.45, lon: 30.5,  pin: 14.6, fund: 45, drivers: 'Active war, infrastructure damage' },
+    { name: 'Somalia',                    lat: 2.05,  lon: 45.3,  pin: 6.9,  fund: 33, drivers: 'Drought, conflict, Al-Shabaab' },
+    { name: 'Sahel (Burkina Faso)',       lat: 12.4,  lon: -1.5,  pin: 6.3,  fund: 28, drivers: 'Jihadist conflict, climate shocks' },
+    { name: 'Haiti',                      lat: 18.5,  lon: -72.3, pin: 5.4,  fund: 24, drivers: 'Gang violence, cholera, hunger' },
+    { name: 'Lebanon',                    lat: 33.9,  lon: 35.5,  pin: 3.7,  fund: 32, drivers: 'Economic collapse, regional spillover' },
+    { name: 'Gaza / oPt',                 lat: 31.5,  lon: 34.45, pin: 2.2,  fund: 22, drivers: 'Active conflict, blockade' },
+    { name: 'Mozambique (Cabo Delgado)',  lat: -12.97,lon: 40.5,  pin: 2.3,  fund: 42, drivers: 'Insurgency, cyclones' },
+    { name: 'South Sudan',                lat: 4.85,  lon: 31.6,  pin: 9.0,  fund: 35, drivers: 'Conflict, floods, returnees from Sudan' },
+    { name: 'Niger / Mali / Chad',        lat: 15.0,  lon: 8.0,   pin: 8.5,  fund: 30, drivers: 'Sahel insecurity, climate' }
+  ];
+
+  // Marker size = sqrt(PIN) so visually proportional to population affected.
+  const markersLayer = L.layerGroup();
+  crises.forEach(c => {
+    const radius = 4 + Math.sqrt(c.pin) * 2;
+    const m = L.circleMarker([c.lat, c.lon], {
+      radius: radius,
+      color: '#7f0000',
+      weight: 1.5,
+      fillColor: '#dc2626',
+      fillOpacity: 0.7
+    });
+    m.bindPopup(`
+      <b>${c.name}</b><br/>
+      <span class="popup-pin">${c.pin}M people in need</span><br/>
+      Funding received: <b>${c.fund}%</b> of appeal<br/>
+      <small><i>${c.drivers}</i></small>
+    `);
+    m.addTo(markersLayer);
+  });
+  markersLayer.addTo(map);
+
+
+  /* =========================================================================
+     STEP 6 - LEGEND
+     A small panel in the bottom-right explaining the color scale.
+  ========================================================================= */
+  const legend = L.control({ position: 'bottomright' });
+  legend.onAdd = function () {
+    const div = L.DomUtil.create('div', 'legend');
+    const grades = [0, 2, 3, 4, 5, 6, 7, 8];
+    const labels = ['<h4>INFORM Risk Index</h4>'];
+    for (let i = 0; i < grades.length; i++) {
+      const from = grades[i];
+      const to = grades[i + 1];
+      labels.push(
+        `<span class="swatch" style="background:${getColor(from + 0.1)}"></span>` +
+        from + (to ? '&ndash;' + to : '+')
+      );
+    }
+    labels.push('<br/><span class="swatch" style="background:#dc2626;border-radius:50%"></span> Active crisis (size = PIN)');
+    div.innerHTML = labels.join('<br/>');
+    return div;
+  };
+  legend.addTo(map);
+
+
+  /* =========================================================================
+     STEP 7 - LAYER TOGGLES (sidebar checkboxes)
+  ========================================================================= */
+  document.getElementById('toggleChoropleth').addEventListener('change', (e) => {
+    if (!countriesLayer) return;
+    if (e.target.checked) map.addLayer(countriesLayer);
+    else map.removeLayer(countriesLayer);
+  });
+  document.getElementById('toggleMarkers').addEventListener('change', (e) => {
+    if (e.target.checked) map.addLayer(markersLayer);
+    else map.removeLayer(markersLayer);
+  });
+  </script>
+</body>
+</html>
