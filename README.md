@@ -2,6 +2,8 @@
 
 An interactive web map that visualizes where humanitarian aid is most needed worldwide. Country-level risk is shaded using the INFORM Risk Index, and active emergencies are plotted as proportional symbols sized by people in need.
 
+https://melaku3x.github.io/humanitarian-map/
+
 Built with vanilla HTML, CSS, and JavaScript using [Leaflet](https://leafletjs.com/). No build step, no framework, no dependencies beyond a single CDN link.
 
 ## Live demo
